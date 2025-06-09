@@ -1,0 +1,25 @@
+=== Sequence Length vs Accuracy Summary ===
+
+K-mer length = 6:
+  Best accuracy: 0.056 (length=100)
+  Average accuracy: 0.011 ± 0.025
+  Average execution time: 0.268s ± 0.247s
+
+K-mer length = 8:
+  Best accuracy: 0.700 (length=100)
+  Average accuracy: 0.340 ± 0.305
+  Average execution time: 0.203s ± 0.205s
+
+K-mer length = 10:
+  Best accuracy: 1.000 (length=200)
+  Average accuracy: 0.840 ± 0.152
+  Average execution time: 0.101s ± 0.118s
+
+
+=== Error Rates Summary ===
+
+Best accuracy: 0.400
+  at neg_error=0.00, pos_error=0.00
+Worst accuracy: 0.000
+  at neg_error=0.00, pos_error=0.10
+Average execution time: 0.133s ± 0.052s
