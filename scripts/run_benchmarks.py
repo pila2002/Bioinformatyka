@@ -32,7 +32,7 @@ def run_length_vs_accuracy_benchmark():
     results = []
     
     # Test different sequence lengths
-    sequence_lengths = [100, 200, 300, 400, 500]
+    sequence_lengths = [100, 300, 500]  # Reduced from 5 to 3 lengths
     k_mer_lengths = [6, 8, 10]
     
     for seq_len in sequence_lengths:
@@ -42,7 +42,7 @@ def run_length_vs_accuracy_benchmark():
                 k_mer_length=k,
                 negative_error_rate=0.0,
                 positive_error_rate=0.0,
-                num_trials=10
+                num_trials=5  # Reduced from 10 to 5 trials
             )
             
             logging.info(f"Running length vs accuracy benchmark: length={seq_len}, k={k}")
@@ -69,7 +69,7 @@ def run_error_rate_benchmark():
     results = []
     
     # Test different error rates
-    error_rates = [0.0, 0.05, 0.1, 0.15, 0.2]
+    error_rates = [0.0, 0.1, 0.2]  # Reduced from 5 to 3 rates
     sequence_length = 300
     k_mer_length = 8
     
@@ -80,7 +80,7 @@ def run_error_rate_benchmark():
                 k_mer_length=k_mer_length,
                 negative_error_rate=neg_error,
                 positive_error_rate=pos_error,
-                num_trials=10
+                num_trials=5  # Reduced from 10 to 5 trials
             )
             
             logging.info(f"Running error rate benchmark: neg_error={neg_error}, pos_error={pos_error}")
