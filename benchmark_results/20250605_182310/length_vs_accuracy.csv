@@ -1,6 +1,0 @@
-parameters,avg_reconstruction_accuracy,avg_execution_time,std_reconstruction_accuracy,std_execution_time,successful_reconstructions
-"BenchmarkParameters(sequence_length=100, k_mer_length=8, negative_error_rate=0.0, positive_error_rate=0.0, num_trials=10)",0.9810000000000001,0.004134821891784668,0.05699999999999998,0.0013733302922476777,9
-"BenchmarkParameters(sequence_length=200, k_mer_length=8, negative_error_rate=0.0, positive_error_rate=0.0, num_trials=10)",0.9765,0.007645082473754883,0.0705,0.0026156437724285807,9
-"BenchmarkParameters(sequence_length=300, k_mer_length=8, negative_error_rate=0.0, positive_error_rate=0.0, num_trials=10)",0.9476666666666667,0.011814355850219727,0.06451614784945964,0.0016958466563845892,5
-"BenchmarkParameters(sequence_length=400, k_mer_length=8, negative_error_rate=0.0, positive_error_rate=0.0, num_trials=10)",0.932,0.01215674877166748,0.08840107465410134,0.0028591479206143207,6
-"BenchmarkParameters(sequence_length=500, k_mer_length=8, negative_error_rate=0.0, positive_error_rate=0.0, num_trials=10)",0.938,0.01478128433227539,0.09948266180596495,0.004357942805897112,7

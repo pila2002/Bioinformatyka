@@ -176,13 +176,19 @@ class ClassicSBH:
             if len(used_edges) == graph.number_of_edges():
                 return True
                 
-            for _, next_node, key in graph.out_edges(node, keys=True):
-                edge = (node, next_node, key)
+            # Sort edges by their weight (if available) or degree
+            edges = list(graph.out_edges(node, keys=True))
+            edges.sort(key=lambda e: (
+                -graph[e[0]][e[1]][e[2]].get('weight', 0),
+                -graph.out_degree(e[1])
+            ))
+            
+            for edge in edges:
                 if edge not in used_edges:
                     used_edges.add(edge)
                     path.append(edge)
                     
-                    if dfs(next_node):
+                    if dfs(edge[1]):
                         return True
                         
                     used_edges.remove(edge)
@@ -208,58 +214,6 @@ class ClassicSBH:
             if kmer1.endswith(kmer2[:i]):
                 return i
         return 0
-        # Create a copy of the graph to mark edges
-        working_graph = graph.copy()
-        for u, v, k in working_graph.edges(keys=True):
-            working_graph[u][v][k]['used'] = False
-        
-        # Try to find Eulerian path
-        try:
-            path = []
-            current = start_node
-            stack = [(current, [])]  # (node, path_so_far)
-            
-            while stack:
-                current, current_path = stack.pop()
-                
-                # Get unused outgoing edges
-                out_edges = [(u, v, k) for u, v, k in working_graph.out_edges(current, keys=True)
-                           if not working_graph[u][v][k]['used']]
-                
-                if not out_edges:
-                    if len(current_path) > len(path):
-                        path = current_path
-                    continue
-                    
-                # Try each unused edge
-                for edge in out_edges:
-                    working_graph[edge[0]][edge[1]][edge[2]]['used'] = True
-                    new_path = current_path + [edge]
-                    stack.append((edge[1], new_path))
-            
-            # Validate path
-            if not path:
-                print("Debug: No path found")
-                return None
-                
-            # Check if path uses all edges
-            edge_count = graph.number_of_edges()
-            if len(path) != edge_count:
-                print(f"Debug: Path does not use all edges: found {len(path)} of {edge_count}")
-                return None
-                
-            # Check if path is connected
-            nodes_in_path = {start_node} | {edge[1] for edge in path}
-            if len(nodes_in_path) != graph.number_of_nodes():
-                print(f"Debug: Path does not visit all nodes: visited {len(nodes_in_path)} of {graph.number_of_nodes()}")
-                return None
-                
-            print(f"Debug: Found valid Eulerian path of length {len(path)}")
-            return path
-            
-        except Exception as e:
-            print(f"Debug: Error finding Eulerian path: {str(e)}")
-            return None
     
     def _sequence_from_path(self, path: List[Tuple[str, str, int]], k: int) -> str:
         """Reconstruct DNA sequence from Eulerian path"""
@@ -309,7 +263,9 @@ class ClassicSBH:
             if kmer in used:
                 continue
             if kmer.startswith(suffix):
-                score = len(suffix) + 0.1 * spectrum.count(kmer)
+                # Calculate score based on frequency and overlap length
+                freq = spectrum.count(kmer)
+                score = len(suffix) + 0.2 * freq
                 exact_matches.append((kmer, score))
                 
         if exact_matches:
@@ -317,7 +273,7 @@ class ClassicSBH:
             exact_matches.sort(key=lambda x: (-x[1], -spectrum.count(x[0])))
             return exact_matches[0]
             
-        # If no exact matches, try partial overlaps
+        # If no exact matches, try partial overlaps with higher weight on longer overlaps
         for kmer in spectrum:
             if kmer in used:
                 continue
@@ -325,7 +281,11 @@ class ClassicSBH:
             # Find longest overlap
             for i in range(min(len(current_suffix), k-1), 2, -1):  # Require at least 3 bp overlap
                 if current_suffix[-i:] == kmer[:i]:
-                    score = i + 0.1 * spectrum.count(kmer)
+                    # Calculate score based on overlap length, frequency, and position
+                    freq = spectrum.count(kmer)
+                    position_score = 1.0 if i == k-1 else 0.5  # Higher score for full k-1 overlap
+                    score = i + 0.2 * freq + position_score
+                    
                     if score > best_score:
                         best_score = score
                         best_match = kmer
@@ -337,7 +297,11 @@ class ClassicSBH:
         """Greedy reconstruction when no Eulerian path exists"""
         print("\n=== Starting Greedy Reconstruction ===")
         
-        # Start with most frequent k-mer that has most overlaps
+        import time
+        start_time = time.time()
+        max_runtime = 30  # Maximum 30 seconds for reconstruction
+        
+        # Calculate k-mer frequencies and overlap scores
         kmer_scores = {}
         for kmer in spectrum:
             score = 0
@@ -346,10 +310,10 @@ class ClassicSBH:
                     # Check both prefix and suffix overlaps
                     for i in range(k-1, 2, -1):
                         if kmer.endswith(other[:i]) or kmer.startswith(other[-i:]):
-                            score += i
-                            break
-            kmer_scores[kmer] = score + 0.1 * spectrum.count(kmer)
+                            score += i * spectrum.count(other)  # Weight by frequency
+            kmer_scores[kmer] = score + 0.2 * spectrum.count(kmer)
             
+        # Start with most promising k-mer
         current = max(spectrum, key=lambda x: kmer_scores[x])
         result = current
         used = {current}
@@ -360,51 +324,91 @@ class ClassicSBH:
         consecutive_failures = 0
         max_consecutive_failures = 5
         backtrack_points = []  # Store points where we can backtrack
+        failed_paths = set()  # Track failed path states to prevent infinite loops
+        min_overlap = 3  # Minimum required overlap
+        max_backtrack_attempts = 10  # Limit total backtrack attempts
+        backtrack_count = 0
+        iteration_count = 0
+        max_iterations = target_length * 5  # Prevent infinite loops
         
-        while len(result) < target_length:
+        while len(result) < target_length and backtrack_count < max_backtrack_attempts:
+            iteration_count += 1
+            
+            # Check timeout and iteration limits
+            if time.time() - start_time > max_runtime:
+                print(f"Debug: Reconstruction timeout after {max_runtime} seconds")
+                break
+            if iteration_count > max_iterations:
+                print(f"Debug: Reached maximum iterations ({max_iterations}), stopping")
+                break
             # Get suffix for matching
             suffix = result[-k+1:] if len(result) >= k-1 else result
-            print(f"Debug: Looking for k-mer with prefix {suffix}")
             
-            # Find best matching k-mer
-            next_kmer, score = self._find_best_kmer_match(suffix, spectrum, used, k)
+            # Create a state key to detect repeated failures
+            state_key = (suffix, frozenset(used), len(result))
             
-            if next_kmer and score > 3:  # Require at least 3 bp overlap
-                print(f"Debug: Found match {next_kmer} with score {score:.1f}")
-                used.add(next_kmer)
-                result = result + next_kmer[-1]  # Add only the last nucleotide
-                print(f"Debug: Current sequence: {result} (length: {len(result)}/{target_length})")
-                consecutive_failures = 0
-                
-                # Store good points for backtracking
-                if score >= k/2:
-                    backtrack_points.append((len(result), set(used), result))
+            # Check if we've already failed from this state
+            if state_key in failed_paths:
+                print(f"Debug: Detected previously failed state, forcing backtrack")
+                consecutive_failures = max_consecutive_failures
             else:
-                consecutive_failures += 1
-                if consecutive_failures >= max_consecutive_failures:
-                    print(f"Debug: Failed to find good matches after {consecutive_failures} attempts")
-                    
-                    # Try to backtrack
-                    if backtrack_points:
-                        pos, used_kmers, seq = backtrack_points.pop()
-                        print(f"Debug: Backtracking to position {pos}")
-                        result = seq
-                        used = used_kmers
-                        consecutive_failures = 0
-                        continue
-                    else:
-                        print("Debug: No backtrack points available")
-                        break
-                        
-                # Try to recover by using most promising unused k-mer
-                unused_kmers = [(k, kmer_scores[k]) for k in spectrum if k not in used]
-                if unused_kmers:
-                    next_kmer = max(unused_kmers, key=lambda x: x[1])[0]
-                    print(f"Debug: Recovering with high-scoring unused k-mer {next_kmer}")
+                print(f"Debug: Looking for k-mer with prefix {suffix}")
+                
+                # Find best matching k-mer
+                next_kmer, score = self._find_best_kmer_match(suffix, spectrum, used, k)
+                
+                if next_kmer and score > min_overlap:
+                    print(f"Debug: Found match {next_kmer} with score {score:.1f}")
                     used.add(next_kmer)
-                    result = result + next_kmer[-1]
+                    result = result + next_kmer[-1]  # Add only the last nucleotide
+                    print(f"Debug: Current sequence: {result} (length: {len(result)}/{target_length})")
+                    consecutive_failures = 0
+                    
+                    # Store good points for backtracking (limit the number stored)
+                    if score >= k/2 and len(backtrack_points) < 20:
+                        backtrack_points.append((len(result), set(used), result))
+                    continue
                 else:
-                    print("Debug: No unused k-mers left")
+                    consecutive_failures += 1
+            
+            # Handle failures and backtracking
+            if consecutive_failures >= max_consecutive_failures:
+                print(f"Debug: Failed to find good matches after {consecutive_failures} attempts")
+                
+                # Mark this state as failed
+                failed_paths.add(state_key)
+                
+                # Try to backtrack
+                if backtrack_points:
+                    backtrack_count += 1
+                    pos, used_kmers, seq = backtrack_points.pop()
+                    print(f"Debug: Backtracking to position {pos} (attempt {backtrack_count})")
+                    result = seq
+                    used = used_kmers.copy()  # Make a copy to avoid reference issues
+                    consecutive_failures = 0
+                    
+                    # Remove some recent failed paths to allow exploration
+                    if backtrack_count > 5:
+                        failed_paths.clear()
+                        print("Debug: Cleared failed paths cache to enable new exploration")
+                    continue
+                else:
+                    print("Debug: No backtrack points available")
                     break
+                    
+            # Try to recover by using most promising unused k-mer
+            unused_kmers = [(k, kmer_scores[k]) for k in spectrum if k not in used]
+            if unused_kmers:
+                next_kmer = max(unused_kmers, key=lambda x: x[1])[0]
+                print(f"Debug: Recovering with high-scoring unused k-mer {next_kmer}")
+                used.add(next_kmer)
+                result = result + next_kmer[-1]
+                consecutive_failures = 0
+            else:
+                print("Debug: No unused k-mers left")
+                break
+                
+        if backtrack_count >= max_backtrack_attempts:
+            print(f"Debug: Reached maximum backtrack attempts ({max_backtrack_attempts}), stopping")
                     
         return result 
